@@ -118,21 +118,21 @@ function ChatPageLogic({ characterId }: { characterId: string }) {
   const isMobile = useIsMobile();
   const isTabletOrMobile = useIsTabletOrMobile();
 
-  // FIX: Define dynamic components inside the logic component or memoize them
-  // This prevents the Server/Client hybrid build error
+  // FIX: Removed `ssr: false` because it conflicts with the Server Metadata in the same file.
+  // The loading skeletons still provide a smooth transition.
   const ChatLeftPanel = useMemo(() => dynamic(
     () => import("@/components/chat/ChatLeftPanel").then((m) => m.ChatLeftPanel),
-    { ssr: false, loading: () => <div className="w-full h-full flex items-center justify-center text-[#999]">Loading...</div> }
+    { loading: () => <div className="w-full h-full flex items-center justify-center text-[#999]">Loading...</div> }
   ), []);
 
   const ChatRightPanel = useMemo(() => dynamic(
     () => import("@/components/chat/ChatRightPanel").then((m) => m.ChatRightPanel),
-    { ssr: false, loading: () => <div className="w-full h-full flex items-center justify-center text-[#999]">Loading...</div> }
+    { loading: () => <div className="w-full h-full flex items-center justify-center text-[#999]">Loading...</div> }
   ), []);
 
   const ChatMiddlePanel = useMemo(() => dynamic(
     () => import("@/components/chat/ChatMiddlePanel").then((m) => m.ChatMiddlePanel),
-    { ssr: false, loading: () => <div className="flex-1 flex items-center justify-center text-[#999]">Loading chat...</div> }
+    { loading: () => <div className="flex-1 flex items-center justify-center text-[#999]">Loading chat...</div> }
   ), []);
 
   const requestedConversationId = searchParams.get("conversationId");
@@ -388,7 +388,7 @@ function ChatPageLogic({ characterId }: { characterId: string }) {
       <div className="h-screen w-full bg-[#0f0f0f] flex overflow-hidden">
         {!isTabletOrMobile && (
           <div className="w-[20%] min-w-[280px] border-r border-white/[0.08] bg-[#111111]">
-            <ChatLeftPanel conversations={conversations} currentConversationId={currentConversationId} onConversationSelect={(id) => router.replace(`/chat/${id}`)} isGuest={isGuest} />
+            <ChatLeftPanel conversations={conversations} currentConversationId={currentConversationId} onConversationSelect={(id: string) => router.replace(`/chat/${id}`)} isGuest={isGuest} />
           </div>
         )}
         <div className="flex-1 flex flex-col bg-[#121212]">
@@ -404,7 +404,7 @@ function ChatPageLogic({ characterId }: { characterId: string }) {
       {isTabletOrMobile && showLeftPanel && (
         <div className="fixed inset-0 z-50 bg-black/50" onClick={() => setShowLeftPanel(false)}>
           <div className="absolute left-0 top-0 h-full w-[80%] max-w-[320px] bg-[#111111] border-r border-white/[0.08]" onClick={(e) => e.stopPropagation()}>
-            <ChatLeftPanel conversations={conversations} currentConversationId={currentConversationId} onConversationSelect={(id) => { router.replace(`/chat/${id}`); setShowLeftPanel(false); }} isGuest={isGuest} onClose={() => setShowLeftPanel(false)} />
+            <ChatLeftPanel conversations={conversations} currentConversationId={currentConversationId} onConversationSelect={(id: string) => { router.replace(`/chat/${id}`); setShowLeftPanel(false); }} isGuest={isGuest} onClose={() => setShowLeftPanel(false)} />
           </div>
         </div>
       )}
