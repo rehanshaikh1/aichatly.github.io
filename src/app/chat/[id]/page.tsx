@@ -1,61 +1,10 @@
-import React from "react";
-import { Metadata, ResolvingMetadata } from "next";
-import { supabase } from "@/integrations/supabase/client";
-
-/** * 1. SERVER-SIDE METADATA 
- * This is the ONLY part WhatsApp/Meta/Twitter reads.
- */
-export async function generateMetadata(
-  { params }: { params: { id: string } },
-  parent: ResolvingMetadata
-): Promise<Metadata> {
-  const id = params.id;
-  const { data: character } = await supabase
-    .from("characters")
-    .select("name, description_en, image_url")
-    .eq("id", id)
-    .maybeSingle();
-
-  const title = character ? `Chat with ${character.name}` : "Chat";
-  const description = character?.description_en || "AI Character Chat";
-  const fallbackImage = "https://aichatly-github-io.vercel.app/default.png";
-  const image = character?.image_url || fallbackImage;
-
-  return {
-    title: title,
-    description: description,
-    openGraph: {
-      title: title,
-      description: description,
-      url: `https://aichatly-github-io.vercel.app/chat/${id}`,
-      images: [{ url: image, width: 1200, height: 630 }],
-      type: "website",
-    },
-    twitter: {
-      card: "summary_large_image",
-      title: title,
-      description: description,
-      images: [image],
-    },
-  };
-}
-
-/**
- * 2. SERVER ENTRY POINT
- */
-export default function Page({ params }: { params: { id: string } }) {
-  return <ChatPageLogic characterId={params.id} />;
-}
-
-/**
- * 3. CLIENT-SIDE LOGIC (FULL 1000+ LINES)
- */
 "use client";
 
-import { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import { useIsMobile, useIsTabletOrMobile } from "@/hooks/use-mobile";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { toast } from "sonner";
@@ -110,7 +59,8 @@ const GUEST_MESSAGES_KEY = "guest_messages";
 const GUEST_CONVERSATIONS_KEY = "guest_conversations";
 const CHAT_CHARACTER_CACHE_PREFIX = "chat_character_cache_";
 
-function ChatPageLogic({ characterId }: { characterId: string }) {
+export default function ChatPage() {
+  const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
@@ -118,23 +68,23 @@ function ChatPageLogic({ characterId }: { characterId: string }) {
   const isMobile = useIsMobile();
   const isTabletOrMobile = useIsTabletOrMobile();
 
-  // FIX: Removed `ssr: false` because it conflicts with the Server Metadata in the same file.
-  // The loading skeletons still provide a smooth transition.
+  // FIX: Move dynamic imports inside useMemo to bypass the SSR build error
   const ChatLeftPanel = useMemo(() => dynamic(
     () => import("@/components/chat/ChatLeftPanel").then((m) => m.ChatLeftPanel),
-    { loading: () => <div className="w-full h-full flex items-center justify-center text-[#999]">Loading...</div> }
+    { ssr: false, loading: () => <div className="w-full h-full flex items-center justify-center text-[#999]">Loading...</div> }
   ), []);
 
   const ChatRightPanel = useMemo(() => dynamic(
     () => import("@/components/chat/ChatRightPanel").then((m) => m.ChatRightPanel),
-    { loading: () => <div className="w-full h-full flex items-center justify-center text-[#999]">Loading...</div> }
+    { ssr: false, loading: () => <div className="w-full h-full flex items-center justify-center text-[#999]">Loading...</div> }
   ), []);
 
   const ChatMiddlePanel = useMemo(() => dynamic(
     () => import("@/components/chat/ChatMiddlePanel").then((m) => m.ChatMiddlePanel),
-    { loading: () => <div className="flex-1 flex items-center justify-center text-[#999]">Loading chat...</div> }
+    { ssr: false, loading: () => <div className="flex-1 flex items-center justify-center text-[#999]">Loading chat...</div> }
   ), []);
 
+  const characterId = params?.id as string;
   const requestedConversationId = searchParams.get("conversationId");
 
   const [character, setCharacter] = useState<Character | null>(() => {
@@ -144,7 +94,7 @@ function ChatPageLogic({ characterId }: { characterId: string }) {
       return cached ? (JSON.parse(cached) as Character) : null;
     } catch { return null; }
   });
-
+  
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
@@ -204,7 +154,7 @@ function ChatPageLogic({ characterId }: { characterId: string }) {
         setCharacter(data);
         sessionStorage.setItem(`${CHAT_CHARACTER_CACHE_PREFIX}${characterId}`, JSON.stringify(data));
       } else { router.push("/"); }
-    } catch (error) { router.push("/"); }
+    } catch (e) { router.push("/"); }
     finally { setLoading(false); }
   };
 
@@ -213,10 +163,10 @@ function ChatPageLogic({ characterId }: { characterId: string }) {
       const stored = localStorage.getItem(GUEST_CONVERSATIONS_KEY);
       const guestConvs = stored ? JSON.parse(stored) : [];
       setConversations(guestConvs);
-      const existingConv = guestConvs.find((c: any) => c.character_id === characterId);
-      if (existingConv) { setCurrentConversationId(existingConv.id); } 
+      const match = guestConvs.find((c: any) => c.character_id === characterId);
+      if (match) { setCurrentConversationId(match.id); } 
       else { createGuestConversation(); }
-    } catch (error) { createGuestConversation(); }
+    } catch (e) { createGuestConversation(); }
   };
 
   const createGuestConversation = () => {
@@ -380,6 +330,12 @@ function ChatPageLogic({ characterId }: { characterId: string }) {
       setMessageCount(count);
     } catch (e) { console.error(e); }
   };
+
+  useEffect(() => {
+    if (currentConversationId) {
+      if (user) { fetchMessages(); loadMessageCount(); } else { loadGuestMessages(); loadGuestMessageCount(); }
+    }
+  }, [currentConversationId, user]);
 
   if (!character) return <div className="h-screen w-full bg-[#0f0f0f] flex items-center justify-center text-white text-lg">Loading...</div>;
 
