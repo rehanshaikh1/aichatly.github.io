@@ -48,23 +48,31 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     character?.description_tr ||
     "Chat with this AI character.";
 
-  const directImage = getDirectImageUrl(character?.image_url);
-  const image = `https://aichatly-github-io.vercel.app/api/og-image?src=${encodeURIComponent(directImage)}`;
+  const pageUrl = `https://aichatly-github-io.vercel.app/chat/${id}`;
+
+  // ✅ STATIC TEST IMAGE
+  const image = "https://aichatly-github-io.vercel.app/default.png";
 
   return {
+    metadataBase: new URL("https://aichatly-github-io.vercel.app"),
     title,
     description,
+    alternates: {
+      canonical: pageUrl,
+    },
     openGraph: {
       title,
       description,
-      url: `https://aichatly-github-io.vercel.app/chat/${id}`,
+      url: pageUrl,
       siteName: "AI Chatly",
       images: [
         {
           url: image,
+          secureUrl: image,
           width: 1200,
           height: 630,
           alt: title,
+          type: "image/png",
         },
       ],
       type: "website",
