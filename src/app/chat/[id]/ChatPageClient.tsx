@@ -129,17 +129,15 @@ export default function ChatPage({ initialCharacter }: ChatPageClientProps) {
   const [claimingVideoReward, setClaimingVideoReward] = useState(false);
   const rewardedAdUnitPath = process.env.NEXT_PUBLIC_GAM_REWARDED_AD_UNIT_PATH || "";
 
-  useEffect(() => {
-    setIsGuest(!user);
-    fetchCharacter();
+useEffect(() => {
+  setIsGuest(!user);
 
-    if (user) {
-      fetchConversations();
-    } else {
-      loadGuestConversations();
-    }
-  }, [user, characterId, requestedConversationId]);
-
+  if (user) {
+    fetchConversations();
+  } else {
+    loadGuestConversations();
+  }
+}, [user, characterId, requestedConversationId]);
   useEffect(() => {
     const verifyShareClick = async () => {
       const url = new URL(window.location.href);
