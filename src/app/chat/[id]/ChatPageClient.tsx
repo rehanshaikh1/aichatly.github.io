@@ -32,7 +32,9 @@ const ChatLeftPanel = dynamic(
 		),
 	}
 );
-
+type ChatPageClientProps = {
+  initialCharacter: any;
+};
 const ChatRightPanel = dynamic(
 	() => import("@/components/chat/ChatRightPanel").then((m) => m.ChatRightPanel),
 	{
@@ -98,8 +100,8 @@ const GUEST_MESSAGES_KEY = "guest_messages";
 const GUEST_CONVERSATIONS_KEY = "guest_conversations";
 const CHAT_CHARACTER_CACHE_PREFIX = "chat_character_cache_";
 
-export default function ChatPage() {
-  const params = useParams();
+export default function ChatPage({ initialCharacter }: ChatPageClientProps) {
+      const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
@@ -110,15 +112,7 @@ export default function ChatPage() {
   const characterId = params?.id as string;
   const requestedConversationId = searchParams.get("conversationId");
 
-  const [character, setCharacter] = useState<Character | null>(() => {
-    if (typeof window === "undefined") return null;
-    try {
-      const cached = sessionStorage.getItem(`${CHAT_CHARACTER_CACHE_PREFIX}${characterId}`);
-      return cached ? (JSON.parse(cached) as Character) : null;
-    } catch {
-      return null;
-    }
-  });
+ const [character, setCharacter] = useState<Character | null>(initialCharacter || null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
