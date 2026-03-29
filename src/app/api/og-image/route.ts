@@ -1,49 +1,22 @@
-import { supabase } from "@/integrations/supabase/client";
+import { NextRequest } from "next/server";
 
-type RouteContext = {
-  params: Promise<{ id: string }>;
-};
-
-function getDirectImageUrl(imageUrl?: string | null) {
-  const fallback = "https://aichatly-github-io.vercel.app/og-default.jpg";
-
-  if (!imageUrl) return fallback;
-
-  try {
-    if (imageUrl.includes("/_next/image?url=")) {
-      const parsed = new URL(imageUrl);
-      const original = parsed.searchParams.get("url");
-      if (original) return decodeURIComponent(original);
-    }
-
-    if (imageUrl.startsWith("http://")) {
-      return imageUrl.replace("http://", "https://");
-    }
-
-    return imageUrl;
-  } catch {
-    return fallback;
-  }
-}
-
-async function getCharacterImage(id: string) {
-  const { data } = await supabase
-    .from("characters")
-    .select("image_url")
-    .eq("id", id)
-    .maybeSingle();
-
-  return getDirectImageUrl(data?.image_url);
-}
-
-export async function GET(_: Request, context: RouteContext) {
-  const { id } = await context.params;
+export async function GET(request: NextRequest) {
   const fallbackUrl = "https://aichatly-github-io.vercel.app/og-default.jpg";
+  const src = request.nextUrl.searchParams.get("src") || fallbackUrl;
+
+  let finalUrl = src;
 
   try {
-    const finalUrl = await getCharacterImage(id);
+    const parsed = new URL(src);
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      finalUrl = fallbackUrl;
+    }
+  } catch {
+    finalUrl = fallbackUrl;
+  }
 
-    const response = await fetch(finalUrl || fallbackUrl, {
+  try {
+    const response = await fetch(finalUrl, {
       headers: {
         "User-Agent": "Mozilla/5.0",
       },
