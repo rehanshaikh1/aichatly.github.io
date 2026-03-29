@@ -16,19 +16,43 @@ async function getCharacter(id: string) {
   return data;
 }
 
+function getOgImageUrl(imageUrl?: string | null) {
+  if (!imageUrl) {
+    return "https://aichatly-github-io.vercel.app/preview.jpg";
+  }
+
+  // If stored URL is a Next.js optimizer URL, extract the real source image
+  if (imageUrl.includes("/_next/image?url=")) {
+    try {
+      const parsed = new URL(imageUrl);
+      const realUrl = parsed.searchParams.get("url");
+      if (realUrl) {
+        return decodeURIComponent(realUrl);
+      }
+    } catch {
+      return "https://aichatly-github-io.vercel.app/preview.jpg";
+    }
+  }
+
+  // Force https if possible
+  if (imageUrl.startsWith("http://")) {
+    return imageUrl.replace("http://", "https://");
+  }
+
+  return imageUrl;
+}
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
   const character = await getCharacter(id);
 
   const title = character?.name ? `${character.name} | AI Chat` : "AI Chat";
-
   const description =
     character?.description_en ||
     character?.description_tr ||
     "Chat with this AI character.";
 
-  // Force a public static image for WhatsApp preview
-  const image = "https://aichatly-github-io.vercel.app/preview.jpg";
+  const image = getOgImageUrl(character?.image_url);
 
   return {
     title,
@@ -57,6 +81,6 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   };
 }
 
-export default async function Page() {
+export default function Page() {
   return <ChatPageClient />;
 }
