@@ -2,8 +2,9 @@ import React from "react";
 import { Metadata, ResolvingMetadata } from "next";
 import { supabase } from "@/integrations/supabase/client";
 
-/** * 1. SERVER-SIDE: DYNAMIC METADATA
- * This section runs on the server so WhatsApp/Meta can see the image.
+/** * 1. SERVER-SIDE METADATA 
+ * This is the ONLY part WhatsApp/Meta/Twitter reads.
+ * It uses your Supabase data to set the image and title.
  */
 export async function generateMetadata(
   { params }: { params: { id: string } },
@@ -17,8 +18,8 @@ export async function generateMetadata(
     .eq("id", id)
     .maybeSingle();
 
-  const title = character ? `Chat with ${character.name}` : "AI Chat | AziBiz";
-  const description = character?.description_en || "Chat with your favorite AI characters on AziBiz.";
+  const title = character ? `Chat with ${character.name}` : "Chat";
+  const description = character?.description_en || "AI Character Chat";
   const fallbackImage = "https://aichatly-github-io.vercel.app/default.png";
   const image = character?.image_url || fallbackImage;
 
@@ -29,13 +30,12 @@ export async function generateMetadata(
       title: title,
       description: description,
       url: `https://aichatly-github-io.vercel.app/chat/${id}`,
-      siteName: "AziBiz AI",
       images: [
         {
           url: image,
           width: 1200,
           height: 630,
-          alt: character?.name || "AI Character",
+          alt: character?.name || "Character",
         },
       ],
       type: "website",
@@ -50,14 +50,15 @@ export async function generateMetadata(
 }
 
 /**
- * 2. SERVER COMPONENT: ENTRY POINT
+ * 2. SERVER ENTRY POINT
+ * This renders your full client logic below.
  */
 export default function Page({ params }: { params: { id: string } }) {
-  return <ChatClientFullLogic characterId={params.id} />;
+  return <ChatPageLogic characterId={params.id} />;
 }
 
 /**
- * 3. CLIENT-SIDE: THE FULL 1000-LINE LOGIC
+ * 3. CLIENT-SIDE LOGIC (YOUR FULL CODE)
  */
 "use client";
 
@@ -79,19 +80,29 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+// Dynamically import heavy panels
 const ChatLeftPanel = dynamic(
   () => import("@/components/chat/ChatLeftPanel").then((m) => m.ChatLeftPanel),
-  { ssr: false, loading: () => <div className="w-full h-full flex items-center justify-center text-[#999]">Loading...</div> }
+  {
+    ssr: false,
+    loading: () => <div className="w-full h-full flex items-center justify-center text-[#999]">Loading...</div>,
+  }
 );
 
 const ChatRightPanel = dynamic(
   () => import("@/components/chat/ChatRightPanel").then((m) => m.ChatRightPanel),
-  { ssr: false, loading: () => <div className="w-full h-full flex items-center justify-center text-[#999]">Loading...</div> }
+  {
+    ssr: false,
+    loading: () => <div className="w-full h-full flex items-center justify-center text-[#999]">Loading...</div>,
+  }
 );
 
 const ChatMiddlePanel = dynamic(
   () => import("@/components/chat/ChatMiddlePanel").then((m) => m.ChatMiddlePanel),
-  { ssr: false, loading: () => <div className="flex-1 flex items-center justify-center text-[#999]">Loading chat...</div> }
+  {
+    ssr: false,
+    loading: () => <div className="flex-1 flex items-center justify-center text-[#999]">Loading chat...</div>,
+  }
 );
 
 interface Character {
@@ -134,7 +145,7 @@ const GUEST_MESSAGES_KEY = "guest_messages";
 const GUEST_CONVERSATIONS_KEY = "guest_conversations";
 const CHAT_CHARACTER_CACHE_PREFIX = "chat_character_cache_";
 
-function ChatClientFullLogic({ characterId }: { characterId: string }) {
+function ChatPageLogic({ characterId }: { characterId: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { user } = useAuth();
@@ -151,7 +162,7 @@ function ChatClientFullLogic({ characterId }: { characterId: string }) {
       return cached ? (JSON.parse(cached) as Character) : null;
     } catch { return null; }
   });
-  
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
@@ -168,14 +179,12 @@ function ChatClientFullLogic({ characterId }: { characterId: string }) {
   const [claimingVideoReward, setClaimingVideoReward] = useState(false);
   const rewardedAdUnitPath = process.env.NEXT_PUBLIC_GAM_REWARDED_AD_UNIT_PATH || "";
 
-  // 1. Initial Load
   useEffect(() => {
     setIsGuest(!user);
     fetchCharacter();
     if (user) { fetchConversations(); } else { loadGuestConversations(); }
   }, [user, characterId, requestedConversationId]);
 
-  // 2. Share Verification
   useEffect(() => {
     const verifyShareClick = async () => {
       const url = new URL(window.location.href);
@@ -191,24 +200,20 @@ function ChatClientFullLogic({ characterId }: { characterId: string }) {
         });
         const data = await res.json();
         if (data?.success) { sessionStorage.setItem(consumeKey, "1"); }
-      } catch (error) { console.error("Error verifying share click:", error); }
+      } catch (error) { console.error("Error verifying share:", error); }
       finally {
         url.searchParams.delete("share_id");
-        url.searchParams.delete("share_ref");
-        url.searchParams.delete("share_platform");
         window.history.replaceState({}, "", url.toString());
       }
     };
     void verifyShareClick();
   }, []);
 
-  // 3. Ad Preload
   useEffect(() => {
     if (!rewardedAdUnitPath) return;
     preloadRewardedAdSdk().catch(() => {});
   }, [rewardedAdUnitPath]);
 
-  // 4. Character Fetching
   const fetchCharacter = async () => {
     setLoading(true);
     try {
@@ -221,7 +226,6 @@ function ChatClientFullLogic({ characterId }: { characterId: string }) {
     finally { setLoading(false); }
   };
 
-  // 5. Guest Logic
   const loadGuestConversations = () => {
     try {
       const stored = localStorage.getItem(GUEST_CONVERSATIONS_KEY);
@@ -234,63 +238,83 @@ function ChatClientFullLogic({ characterId }: { characterId: string }) {
   };
 
   const createGuestConversation = () => {
-    const newConvId = `guest_conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const newConv = { id: newConvId, character_id: characterId, last_message_at: new Date().toISOString(), message_count: 0 };
+    const id = `guest_conv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const newConv = { id, character_id: characterId, last_message_at: new Date().toISOString(), message_count: 0 };
     try {
       const stored = localStorage.getItem(GUEST_CONVERSATIONS_KEY);
       const guestConvs = stored ? JSON.parse(stored) : [];
       guestConvs.push(newConv);
       localStorage.setItem(GUEST_CONVERSATIONS_KEY, JSON.stringify(guestConvs));
-      setCurrentConversationId(newConvId);
-      setConversations(guestConvs);
+      setCurrentConversationId(id);
+      loadGuestConversations();
     } catch (e) { console.error(e); }
   };
 
   const loadGuestMessages = async () => {
     try {
       const stored = localStorage.getItem(GUEST_MESSAGES_KEY);
-      const allMessages = stored ? JSON.parse(stored) : [];
-      const convMessages = allMessages.filter((m: Message) => m.conversation_id === currentConversationId);
-      setMessages(convMessages);
-      if (convMessages.length === 0 && character) { await sendWelcomeMessage(); }
-      else { setWelcomeMessageSent(true); }
-    } catch (e) { setMessages([]); }
+      const all = stored ? JSON.parse(stored) : [];
+      const filtered = all.filter((m: Message) => m.conversation_id === currentConversationId);
+      setMessages(filtered);
+      if (filtered.length === 0 && character) { await sendWelcomeMessage(); } else { setWelcomeMessageSent(true); }
+    } catch (e) { setMessages([]); if (character) await sendWelcomeMessage(); }
   };
 
   const saveGuestMessage = (message: Message) => {
     try {
       const stored = localStorage.getItem(GUEST_MESSAGES_KEY);
-      const allMessages = stored ? JSON.parse(stored) : [];
-      allMessages.push(message);
-      localStorage.setItem(GUEST_MESSAGES_KEY, JSON.stringify(allMessages));
+      const all = stored ? JSON.parse(stored) : [];
+      all.push(message);
+      localStorage.setItem(GUEST_MESSAGES_KEY, JSON.stringify(all));
     } catch (e) { console.error(e); }
   };
 
-  // 6. User Logic
   const fetchConversations = async () => {
     if (!user) return;
     try {
       const { data } = await supabase.from("conversations").select("*").eq("user_id", user.id).order("last_message_at", { ascending: false });
       if (data) {
-        const conversationsWithCharacters = await Promise.all(
-          data.map(async (conv) => {
-            const { data: charData } = await supabase.from("characters").select("*").eq("id", conv.character_id).maybeSingle();
-            return { ...conv, character: charData || undefined };
-          })
-        );
-        setConversations(conversationsWithCharacters as Conversation[]);
-        const existingConv = data.find((c) => c.character_id === characterId);
-        if (existingConv) { setCurrentConversationId(existingConv.id); } 
-        else { createNewConversation(); }
-      }
+        const withChars = await Promise.all(data.map(async (conv) => {
+          const { data: c } = await supabase.from("characters").select("*").eq("id", conv.character_id).maybeSingle();
+          return { ...conv, character: c || undefined };
+        }));
+        setConversations(withChars as Conversation[]);
+        const match = data.find((c) => c.character_id === characterId);
+        if (match) { setCurrentConversationId(match.id); } else { createNewConversation(); }
+      } else { createNewConversation(); }
     } catch (e) { console.error(e); }
   };
 
   const createNewConversation = async () => {
     if (!user) return;
     try {
-      const { data, error } = await supabase.from("conversations").insert({ user_id: user.id, character_id: characterId, message_count: 0 }).select().maybeSingle();
-      if (data && !error) { setCurrentConversationId(data.id); fetchConversations(); }
+      const { data } = await supabase.from("conversations").insert({ user_id: user.id, character_id: characterId, message_count: 0 }).select().maybeSingle();
+      if (data) { setCurrentConversationId(data.id); fetchConversations(); }
+    } catch (e) { console.error(e); }
+  };
+
+  const generateWelcomeMessage = (): string => {
+    if (!character) return "";
+    const name = character.name || "";
+    const personality = language === "tr" ? (character.description_tr || character.description_en || "") : (character.description_en || character.description_tr || "");
+    const instr = character.character_instructions || "";
+    const prof = language === "tr" ? (character.occupation_tr || character.occupation_en || "") : (character.occupation_en || character.occupation_tr || "");
+    return `You are ${name}.\nPersonality: ${personality}\nDescription: ${instr}\nProfession: ${prof}`;
+  };
+
+  const sendWelcomeMessage = async () => {
+    if (!currentConversationId || !character || welcomeMessageSent) return;
+    const content = generateWelcomeMessage();
+    try {
+      if (user) {
+        const { data } = await supabase.from("messages").insert({ conversation_id: currentConversationId, sender_type: "character", content }).select().maybeSingle();
+        if (data) { setMessages((prev) => [...prev, data]); setWelcomeMessageSent(true); }
+      } else {
+        const msg: Message = { id: `g_w_${Date.now()}`, conversation_id: currentConversationId, sender_type: "character", content, created_at: new Date().toISOString() };
+        saveGuestMessage(msg);
+        setMessages((prev) => [...prev, msg]);
+        setWelcomeMessageSent(true);
+      }
     } catch (e) { console.error(e); }
   };
 
@@ -300,25 +324,7 @@ function ChatClientFullLogic({ characterId }: { characterId: string }) {
       const { data } = await supabase.from("messages").select("*").eq("conversation_id", currentConversationId).order("created_at", { ascending: true });
       if (data) {
         setMessages(data);
-        if (data.length === 0 && character) { await sendWelcomeMessage(); }
-        else { setWelcomeMessageSent(true); }
-      }
-    } catch (e) { console.error(e); }
-  };
-
-  // 7. Messaging Logic
-  const sendWelcomeMessage = async () => {
-    if (!currentConversationId || !character || welcomeMessageSent) return;
-    const welcomeContent = `You are ${character.name}.\nPersonality: ${character.description_en}`;
-    try {
-      if (user) {
-        const { data: newMessage } = await supabase.from("messages").insert({ conversation_id: currentConversationId, sender_type: "character", content: welcomeContent }).select().maybeSingle();
-        if (newMessage) { setMessages((prev) => [...prev, newMessage]); setWelcomeMessageSent(true); }
-      } else {
-        const welcomeMessage: Message = { id: `g_welcome_${Date.now()}`, conversation_id: currentConversationId, sender_type: "character", content: welcomeContent, created_at: new Date().toISOString() };
-        saveGuestMessage(welcomeMessage);
-        setMessages((prev) => [...prev, welcomeMessage]);
-        setWelcomeMessageSent(true);
+        if (data.length === 0 && character) { await sendWelcomeMessage(); } else { setWelcomeMessageSent(true); }
       }
     } catch (e) { console.error(e); }
   };
@@ -326,37 +332,25 @@ function ChatClientFullLogic({ characterId }: { characterId: string }) {
   const sendMessage = async (content: string) => {
     if (!currentConversationId) return;
     if (user) {
-      const recentMessages = messages.slice(-10).map((msg) => ({
-        role: msg.sender_type === "user" ? ("user" as const) : ("assistant" as const),
-        content: msg.content,
-      }));
-      recentMessages.push({ role: "user" as const, content });
+      const history = messages.slice(-10).map((m) => ({ role: m.sender_type === "user" ? ("user" as const) : ("assistant" as const), content: m.content }));
+      history.push({ role: "user", content });
       try {
-        const response = await fetch("/api/chat/completion", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: recentMessages, characterId, userId: user.id }),
-        });
-        if (!response.ok) {
-          const errorBody = await response.json();
-          if (errorBody?.error?.toLowerCase().includes("limit")) {
-            await loadRewardRemainingCounts();
-            setShowLimitPopup(true);
-            return;
-          }
-          throw new Error("Chat failed");
+        const res = await fetch("/api/chat/completion", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: history, characterId, userId: user.id }) });
+        if (!res.ok) {
+          const body = await res.json();
+          if (body?.error?.toLowerCase().includes("limit")) { await loadRewardRemainingCounts(); setShowLimitPopup(true); return; }
+          throw new Error("Failed");
         }
-        const data = await response.json();
-        const { data: savedUser } = await supabase.from("messages").insert({ conversation_id: currentConversationId, sender_type: "user", content }).select().maybeSingle();
-        if (savedUser) setMessages((prev) => [...prev, savedUser]);
-        const { data: aiMsg } = await supabase.from("messages").insert({ conversation_id: currentConversationId, sender_type: "character", content: data.content }).select().maybeSingle();
-        if (aiMsg) setMessages((prev) => [...prev, aiMsg]);
+        const data = await res.json();
+        const { data: uMsg } = await supabase.from("messages").insert({ conversation_id: currentConversationId, sender_type: "user", content }).select().maybeSingle();
+        if (uMsg) setMessages(p => [...p, uMsg]);
+        const { data: aMsg } = await supabase.from("messages").insert({ conversation_id: currentConversationId, sender_type: "character", content: data.content }).select().maybeSingle();
+        if (aMsg) setMessages(p => [...p, aMsg]);
         setMessageCount(prev => prev + 1);
-      } catch (e) { toast.error("Failed to send message."); }
+      } catch (e) { toast.error("Error sending message."); }
     } else {
-      const guestUserMsg: Message = { id: `gu_${Date.now()}`, conversation_id: currentConversationId, sender_type: "user", content, created_at: new Date().toISOString() };
-      saveGuestMessage(guestUserMsg);
-      setMessages((prev) => [...prev, guestUserMsg]);
+      const gMsg: Message = { id: `g_u_${Date.now()}`, conversation_id: currentConversationId, sender_type: "user", content, created_at: new Date().toISOString() };
+      saveGuestMessage(gMsg); setMessages(p => [...p, gMsg]);
     }
   };
 
@@ -378,8 +372,8 @@ function ChatClientFullLogic({ characterId }: { characterId: string }) {
     if (!user || !rewardedAdUnitPath) return;
     setClaimingVideoReward(true);
     try {
-      const adResult = await showRewardedAd(rewardedAdUnitPath);
-      if (adResult.success) {
+      const ad = await showRewardedAd(rewardedAdUnitPath);
+      if (ad.success) {
         const res = await fetch("/api/rewards/video-watch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "claim", userId: user.id }) });
         if (res.ok) { toast.success("Reward claimed!"); setShowLimitPopup(false); }
       }
@@ -387,20 +381,31 @@ function ChatClientFullLogic({ characterId }: { characterId: string }) {
     finally { setClaimingVideoReward(false); await loadRewardRemainingCounts(); }
   };
 
-  // 8. View Handlers
-  useEffect(() => {
-    if (currentConversationId) {
-      if (user) { fetchMessages(); } else { loadGuestMessages(); }
-    }
-  }, [currentConversationId]);
+  const loadMessageCount = async () => {
+    if (!currentConversationId || !user) return;
+    try {
+      const { count } = await supabase.from("messages").select("*", { count: "exact", head: true }).eq("conversation_id", currentConversationId).eq("sender_type", "user");
+      setMessageCount(count || 0);
+    } catch (e) { console.error(e); }
+  };
 
-  if (!character) return <div className="h-screen w-full bg-[#0f0f0f] flex items-center justify-center text-white">Loading...</div>;
+  const loadGuestMessageCount = () => {
+    if (!currentConversationId) return;
+    try {
+      const stored = localStorage.getItem(GUEST_MESSAGES_KEY);
+      const guestMsgs = stored ? JSON.parse(stored) : [];
+      const count = guestMsgs.filter((m: Message) => m.conversation_id === currentConversationId && m.sender_type === "user").length;
+      setMessageCount(count);
+    } catch (e) { console.error(e); }
+  };
+
+  if (!character) return <div className="h-screen w-full bg-[#0f0f0f] flex items-center justify-center text-white text-lg">Loading...</div>;
 
   return (
     <>
       <div className="h-screen w-full bg-[#0f0f0f] flex overflow-hidden">
         {!isTabletOrMobile && (
-          <div className="w-[20%] min-w-[280px] bg-[#111111] border-r border-white/10">
+          <div className="w-[20%] min-w-[280px] border-r border-white/[0.08] bg-[#111111]">
             <ChatLeftPanel conversations={conversations} currentConversationId={currentConversationId} onConversationSelect={(id) => router.replace(`/chat/${id}`)} isGuest={isGuest} />
           </div>
         )}
@@ -408,16 +413,15 @@ function ChatClientFullLogic({ characterId }: { characterId: string }) {
           <ChatMiddlePanel character={character} messages={messages} onSendMessage={sendMessage} onToggleLeftPanel={() => setShowLeftPanel(!showLeftPanel)} onToggleRightPanel={() => setShowRightPanel(!showRightPanel)} showMobileControls={isTabletOrMobile} isGuest={isGuest} conversationId={currentConversationId} />
         </div>
         {!isTabletOrMobile && (
-          <div className="w-[22%] min-w-[300px] bg-[#111111] border-l border-white/10">
+          <div className="w-[22%] min-w-[300px] border-l border-white/[0.08] bg-[#111111]">
             <ChatRightPanel character={character} messageCount={messageCount} />
           </div>
         )}
       </div>
 
-      {/* MOBILE OVERLAYS */}
       {isTabletOrMobile && showLeftPanel && (
         <div className="fixed inset-0 z-50 bg-black/50" onClick={() => setShowLeftPanel(false)}>
-          <div className="absolute left-0 h-full w-[80%] bg-[#111111]" onClick={(e) => e.stopPropagation()}>
+          <div className="absolute left-0 top-0 h-full w-[80%] max-w-[320px] bg-[#111111] border-r border-white/[0.08]" onClick={(e) => e.stopPropagation()}>
             <ChatLeftPanel conversations={conversations} currentConversationId={currentConversationId} onConversationSelect={(id) => { router.replace(`/chat/${id}`); setShowLeftPanel(false); }} isGuest={isGuest} onClose={() => setShowLeftPanel(false)} />
           </div>
         </div>
@@ -425,22 +429,23 @@ function ChatClientFullLogic({ characterId }: { characterId: string }) {
 
       {isTabletOrMobile && showRightPanel && (
         <div className="fixed inset-0 z-50 bg-black/50" onClick={() => setShowRightPanel(false)}>
-          <div className="absolute right-0 h-full w-[85%] bg-[#111111]" onClick={(e) => e.stopPropagation()}>
+          <div className="absolute right-0 top-0 h-full w-[85%] max-w-[360px] bg-[#111111] border-l border-white/[0.08]" onClick={(e) => e.stopPropagation()}>
             <ChatRightPanel character={character} messageCount={messageCount} onClose={() => setShowRightPanel(false)} />
           </div>
         </div>
       )}
 
-      {/* REWARD DIALOG */}
       <Dialog open={showLimitPopup} onOpenChange={setShowLimitPopup}>
-        <DialogContent className="bg-[#1a1a1a] text-white border-white/10">
+        <DialogContent className="bg-[#1a1a1a] border-white/[0.08] text-white">
           <DialogHeader>
-            <DialogTitle className="text-xl font-bold">Limit Reached</DialogTitle>
-            <DialogDescription className="text-gray-400">Watch a video or share to keep chatting!</DialogDescription>
+            <DialogTitle className="text-xl font-bold">Message Limit Reached</DialogTitle>
+            <DialogDescription className="text-gray-400">Watch a video to earn +15 messages!</DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex gap-3 mt-4">
-            <Button onClick={handleWatchVideoReward} disabled={claimingVideoReward} className="flex-1 bg-purple-600">Watch Video</Button>
-            <Button onClick={() => setShowRightPanel(true)} variant="outline" className="flex-1">Share</Button>
+            <Button onClick={handleWatchVideoReward} disabled={claimingVideoReward} className="flex-1 bg-gradient-to-r from-[#6366f1] to-[#a855f7] text-white">
+              {claimingVideoReward ? "Loading..." : "Watch Video"}
+            </Button>
+            <Button onClick={() => setShowLimitPopup(false)} variant="outline" className="flex-1 border-white/[0.08] text-white">Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
