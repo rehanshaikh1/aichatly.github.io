@@ -1,23 +1,49 @@
-import { NextRequest } from "next/server";
+import { supabase } from "@/integrations/supabase/client";
 
-export async function GET(request: NextRequest) {
-  const fallbackUrl = "https://aichatly-github-io.vercel.app/og-default.jpg";
-  const src = request.nextUrl.searchParams.get("src") || fallbackUrl;
+type RouteContext = {
+  params: Promise<{ id: string }>;
+};
 
-  let finalUrl = src;
+function getDirectImageUrl(imageUrl?: string | null) {
+  const fallback = "https://aichatly-github-io.vercel.app/og-default.jpg";
+
+  if (!imageUrl) return fallback;
 
   try {
-    // basic safety: only allow http/https
-    const parsed = new URL(src);
-    if (!["http:", "https:"].includes(parsed.protocol)) {
-      finalUrl = fallbackUrl;
+    if (imageUrl.includes("/_next/image?url=")) {
+      const parsed = new URL(imageUrl);
+      const original = parsed.searchParams.get("url");
+      if (original) return decodeURIComponent(original);
     }
+
+    if (imageUrl.startsWith("http://")) {
+      return imageUrl.replace("http://", "https://");
+    }
+
+    return imageUrl;
   } catch {
-    finalUrl = fallbackUrl;
+    return fallback;
   }
+}
+
+async function getCharacterImage(id: string) {
+  const { data } = await supabase
+    .from("characters")
+    .select("image_url")
+    .eq("id", id)
+    .maybeSingle();
+
+  return getDirectImageUrl(data?.image_url);
+}
+
+export async function GET(_: Request, context: RouteContext) {
+  const { id } = await context.params;
+  const fallbackUrl = "https://aichatly-github-io.vercel.app/og-default.jpg";
 
   try {
-    const response = await fetch(finalUrl, {
+    const finalUrl = await getCharacterImage(id);
+
+    const response = await fetch(finalUrl || fallbackUrl, {
       headers: {
         "User-Agent": "Mozilla/5.0",
       },
@@ -39,7 +65,7 @@ export async function GET(request: NextRequest) {
         "Cache-Control": "public, max-age=86400, s-maxage=86400",
       },
     });
-  } catch (error) {
+  } catch {
     try {
       const fallbackResponse = await fetch(fallbackUrl, {
         cache: "no-store",
