@@ -4,14 +4,12 @@ import { supabase } from "@/integrations/supabase/client";
 
 /** * 1. SERVER-SIDE METADATA 
  * This is the ONLY part WhatsApp/Meta/Twitter reads.
- * It uses your Supabase data to set the image and title.
  */
 export async function generateMetadata(
   { params }: { params: { id: string } },
   parent: ResolvingMetadata
 ): Promise<Metadata> {
   const id = params.id;
-
   const { data: character } = await supabase
     .from("characters")
     .select("name, description_en, image_url")
@@ -30,14 +28,7 @@ export async function generateMetadata(
       title: title,
       description: description,
       url: `https://aichatly-github-io.vercel.app/chat/${id}`,
-      images: [
-        {
-          url: image,
-          width: 1200,
-          height: 630,
-          alt: character?.name || "Character",
-        },
-      ],
+      images: [{ url: image, width: 1200, height: 630 }],
       type: "website",
     },
     twitter: {
@@ -51,18 +42,17 @@ export async function generateMetadata(
 
 /**
  * 2. SERVER ENTRY POINT
- * This renders your full client logic below.
  */
 export default function Page({ params }: { params: { id: string } }) {
   return <ChatPageLogic characterId={params.id} />;
 }
 
 /**
- * 3. CLIENT-SIDE LOGIC (YOUR FULL CODE)
+ * 3. CLIENT-SIDE LOGIC (FULL 1000+ LINES)
  */
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useAuth } from "@/contexts/AuthContext";
@@ -79,31 +69,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-
-// Dynamically import heavy panels
-const ChatLeftPanel = dynamic(
-  () => import("@/components/chat/ChatLeftPanel").then((m) => m.ChatLeftPanel),
-  {
-    ssr: false,
-    loading: () => <div className="w-full h-full flex items-center justify-center text-[#999]">Loading...</div>,
-  }
-);
-
-const ChatRightPanel = dynamic(
-  () => import("@/components/chat/ChatRightPanel").then((m) => m.ChatRightPanel),
-  {
-    ssr: false,
-    loading: () => <div className="w-full h-full flex items-center justify-center text-[#999]">Loading...</div>,
-  }
-);
-
-const ChatMiddlePanel = dynamic(
-  () => import("@/components/chat/ChatMiddlePanel").then((m) => m.ChatMiddlePanel),
-  {
-    ssr: false,
-    loading: () => <div className="flex-1 flex items-center justify-center text-[#999]">Loading chat...</div>,
-  }
-);
 
 interface Character {
   id: string;
@@ -152,6 +117,23 @@ function ChatPageLogic({ characterId }: { characterId: string }) {
   const { language } = useLanguage();
   const isMobile = useIsMobile();
   const isTabletOrMobile = useIsTabletOrMobile();
+
+  // FIX: Define dynamic components inside the logic component or memoize them
+  // This prevents the Server/Client hybrid build error
+  const ChatLeftPanel = useMemo(() => dynamic(
+    () => import("@/components/chat/ChatLeftPanel").then((m) => m.ChatLeftPanel),
+    { ssr: false, loading: () => <div className="w-full h-full flex items-center justify-center text-[#999]">Loading...</div> }
+  ), []);
+
+  const ChatRightPanel = useMemo(() => dynamic(
+    () => import("@/components/chat/ChatRightPanel").then((m) => m.ChatRightPanel),
+    { ssr: false, loading: () => <div className="w-full h-full flex items-center justify-center text-[#999]">Loading...</div> }
+  ), []);
+
+  const ChatMiddlePanel = useMemo(() => dynamic(
+    () => import("@/components/chat/ChatMiddlePanel").then((m) => m.ChatMiddlePanel),
+    { ssr: false, loading: () => <div className="flex-1 flex items-center justify-center text-[#999]">Loading chat...</div> }
+  ), []);
 
   const requestedConversationId = searchParams.get("conversationId");
 
@@ -438,7 +420,7 @@ function ChatPageLogic({ characterId }: { characterId: string }) {
       <Dialog open={showLimitPopup} onOpenChange={setShowLimitPopup}>
         <DialogContent className="bg-[#1a1a1a] border-white/[0.08] text-white">
           <DialogHeader>
-            <DialogTitle className="text-xl font-bold">Message Limit Reached</DialogTitle>
+            <DialogTitle className="text-xl font-bold">Limit Reached</DialogTitle>
             <DialogDescription className="text-gray-400">Watch a video to earn +15 messages!</DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex gap-3 mt-4">
